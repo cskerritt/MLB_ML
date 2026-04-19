@@ -44,6 +44,11 @@ python -m mlb_ml.predict --date 2024-08-01
 python -m mlb_ml.live                    # defaults to today
 python -m mlb_ml.live --date 2024-08-01
 
+# 4b. Full daily refresh (data -> features -> train-if-needed -> live picks).
+#     Writes daily_picks/YYYY-MM-DD.csv and daily_picks/latest.csv.
+python -m mlb_ml.daily                   # fresh run for today
+python -m mlb_ml.daily --refresh         # also re-pull Retrosheet logs
+
 # 5. Walk-forward backtest (refits per season, compares vs baselines)
 python -m mlb_ml.backtest --train-seasons 3
 
@@ -57,6 +62,21 @@ Run modules from the `src/` directory or add it to `PYTHONPATH`:
 ```bash
 export PYTHONPATH=src
 ```
+
+## Automation
+
+`.github/workflows/daily_picks.yml` runs `mlb_ml.daily` every day at
+15:00 UTC (11:00 ET) and commits fresh picks to `daily_picks/`. It also
+accepts a manual run via **Actions → Daily MLB Picks → Run workflow**, with
+optional inputs:
+
+- `date` (YYYY-MM-DD) — target slate; defaults to today.
+- `refresh` (`true`/`false`) — force re-pull of Retrosheet game logs.
+
+The workflow caches `data/raw`, `data/processed`, and `models/` across runs so
+only the delta (latest season logs, new features, fresh live predictions) is
+recomputed each day. First run on a cold cache takes ~5 minutes; subsequent
+runs are typically under a minute.
 
 ## Project layout
 
@@ -79,6 +99,7 @@ src/mlb_ml/
   train.py             benchmark + calibrated fit of the selected model
   predict.py           daily win-probability CLI (from features.parquet)
   live.py              today's schedule from MLB Stats API + predictions
+  daily.py             end-to-end orchestrator for scheduled refreshes
   backtest.py          walk-forward backtest + optional ROI
 data/           raw + processed parquet (gitignored)
 models/         saved model artifacts (gitignored)
@@ -107,4 +128,4 @@ models/         saved model artifacts (gitignored)
 - [x] Injury/IL-list ingestion (CSV merge)
 - [x] Umpire run-environment factor (lagged)
 - [x] Live daily predictions via public MLB Stats API
-- [ ] Scheduled auto-refresh (GitHub Action) for daily picks
+- [x] Scheduled GitHub Action that commits fresh picks each morning
