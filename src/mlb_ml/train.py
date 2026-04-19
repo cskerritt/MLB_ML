@@ -23,7 +23,11 @@ log = logging.getLogger(__name__)
 
 def _load() -> pd.DataFrame:
     df = pd.read_parquet(FEATURES_PARQUET).sort_values("date").reset_index(drop=True)
-    df = df.dropna(subset=FEATURE_COLS + [TARGET_COL])
+    df = df.dropna(subset=[TARGET_COL])
+    # Drop rows where the core team-form features are missing (early-season warmup).
+    # Pitcher columns are allowed to be NaN; XGBoost handles missing values natively.
+    must_have = ["elo_diff", "home_win_pct_30", "away_win_pct_30"]
+    df = df.dropna(subset=must_have)
     return df
 
 

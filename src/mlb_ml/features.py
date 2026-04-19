@@ -11,6 +11,11 @@ import numpy as np
 import pandas as pd
 
 from .config import FEATURES_PARQUET, GAMES_PARQUET, TARGET_COL
+from .pitcher_features import (
+    PITCHER_FEATURE_COLS,
+    build_pitcher_features,
+    merge_into_games,
+)
 
 log = logging.getLogger(__name__)
 
@@ -89,10 +94,12 @@ def build_features(games: pd.DataFrame | None = None) -> pd.DataFrame:
     long = _team_long_format(games)
     long = _rolling_team_stats(long)
 
-    home_feats = long[long["is_home"] == 1].add_prefix("home_")
-    away_feats = long[long["is_home"] == 0].add_prefix("away_")
-    home_feats = home_feats.rename(columns={"home_date": "date", "home_team": "home_team"})
-    away_feats = away_feats.rename(columns={"away_date": "date", "away_team": "away_team"})
+    # Drop columns that exist on `games` to avoid merge-collisions with the target.
+    long_for_merge = long.drop(columns=["runs_for", "runs_against", "win"])
+    home_feats = long_for_merge[long_for_merge["is_home"] == 1].add_prefix("home_")
+    away_feats = long_for_merge[long_for_merge["is_home"] == 0].add_prefix("away_")
+    home_feats = home_feats.rename(columns={"home_date": "date"})
+    away_feats = away_feats.rename(columns={"away_date": "date"})
 
     merged = games.merge(
         home_feats.drop(columns=["home_opp", "home_is_home", "home_season"]),
@@ -108,6 +115,10 @@ def build_features(games: pd.DataFrame | None = None) -> pd.DataFrame:
     merged = pd.concat([merged, elo], axis=1)
     merged["elo_diff"] = merged["home_elo_pre"] - merged["away_elo_pre"]
 
+    if {"home_sp_id", "away_sp_id"}.issubset(games.columns):
+        pitcher_feats = build_pitcher_features(games)
+        merged = merge_into_games(merged, pitcher_feats)
+
     for w in ROLL_WINDOWS:
         merged[f"win_pct_diff_{w}"] = merged[f"home_win_pct_{w}"] - merged[f"away_win_pct_{w}"]
         merged[f"run_diff_diff_{w}"] = merged[f"home_run_diff_{w}"] - merged[f"away_run_diff_{w}"]
@@ -121,7 +132,7 @@ def build_features(games: pd.DataFrame | None = None) -> pd.DataFrame:
     return merged
 
 
-FEATURE_COLS = [
+TEAM_FEATURE_COLS = [
     "elo_diff",
     "home_elo_pre",
     "away_elo_pre",
@@ -134,6 +145,8 @@ FEATURE_COLS = [
     *[f"home_run_diff_{w}" for w in ROLL_WINDOWS],
     *[f"away_run_diff_{w}" for w in ROLL_WINDOWS],
 ]
+
+FEATURE_COLS = TEAM_FEATURE_COLS + PITCHER_FEATURE_COLS
 
 
 if __name__ == "__main__":
