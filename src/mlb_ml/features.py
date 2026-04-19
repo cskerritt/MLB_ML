@@ -27,6 +27,12 @@ from .bullpen import (
     infer_starters,
     merge_bullpen_into_games,
 )
+from .park_factors import (
+    PARK_FEATURE_COLS,
+    compute_park_factors,
+    merge_park_factors_into_games,
+)
+from .weather import WEATHER_FEATURE_COLS, load_weather_csv, merge_weather_into_games
 
 log = logging.getLogger(__name__)
 
@@ -99,12 +105,16 @@ def _elo(games: pd.DataFrame, k: float = 4.0, hfa: float = 24.0) -> pd.DataFrame
 def build_features(
     games: pd.DataFrame | None = None,
     statcast: pd.DataFrame | None = None,
+    weather_csv: str | None = None,
 ) -> pd.DataFrame:
     """Construct the modeling table from a games dataframe.
 
     If ``statcast`` is provided, advanced pitcher metrics (xwOBA, K%, BB%,
     whiff%) and bullpen-fatigue features are attached on top of the base
-    team-form + Elo + simple-pitcher layers.
+    team-form + Elo + simple-pitcher layers. Park factors (lagged one season)
+    are always attached when ``park_id`` is available. If ``weather_csv``
+    points to a file matching the schema in ``weather.py``, per-game weather
+    is merged in as well.
     """
     if games is None:
         games = pd.read_parquet(GAMES_PARQUET)
@@ -146,6 +156,14 @@ def build_features(
         bullpen = build_bullpen_features(statcast, starters)
         merged = merge_bullpen_into_games(merged, bullpen)
 
+    if "park_id" in games.columns:
+        pf = compute_park_factors(games)
+        merged = merge_park_factors_into_games(merged, pf)
+
+    if weather_csv is not None:
+        weather = load_weather_csv(weather_csv)
+        merged = merge_weather_into_games(merged, weather)
+
     for w in ROLL_WINDOWS:
         merged[f"win_pct_diff_{w}"] = merged[f"home_win_pct_{w}"] - merged[f"away_win_pct_{w}"]
         merged[f"run_diff_diff_{w}"] = merged[f"home_run_diff_{w}"] - merged[f"away_run_diff_{w}"]
@@ -178,6 +196,8 @@ FEATURE_COLS = (
     + PITCHER_FEATURE_COLS
     + ADVANCED_PITCHER_FEATURE_COLS
     + BULLPEN_FEATURE_COLS
+    + PARK_FEATURE_COLS
+    + WEATHER_FEATURE_COLS
 )
 
 
@@ -189,6 +209,8 @@ if __name__ == "__main__":
     p.add_argument("--statcast-start", type=int, default=None,
                    help="If set, pull Statcast for this season range and attach advanced features")
     p.add_argument("--statcast-end", type=int, default=None)
+    p.add_argument("--weather-csv", type=str, default=None,
+                   help="Optional CSV: date,park_id,temp_f,wind_mph,wind_dir,precip_pct,is_dome")
     args = p.parse_args()
 
     sc = None
@@ -196,4 +218,4 @@ if __name__ == "__main__":
         from .statcast import load_statcast
 
         sc = load_statcast(range(args.statcast_start, args.statcast_end + 1))
-    build_features(statcast=sc)
+    build_features(statcast=sc, weather_csv=args.weather_csv)

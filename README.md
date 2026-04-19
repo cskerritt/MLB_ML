@@ -20,8 +20,13 @@ python -m mlb_ml.features
 #     (first run downloads ~700k pitches per season; cached to data/raw/)
 python -m mlb_ml.features --statcast-start 2022 --statcast-end 2024
 
-# 3. Train + walk-forward cross-validate
-python -m mlb_ml.train
+# 2c. Optional: merge weather data from your own CSV
+#     (schema: date,park_id,temp_f,wind_mph,wind_dir,precip_pct,is_dome)
+python -m mlb_ml.features --weather-csv data/raw/weather.csv
+
+# 3. Benchmark XGBoost vs LightGBM vs logistic vs stacked, save the best
+python -m mlb_ml.train                  # auto-picks best by log loss
+python -m mlb_ml.train --model stacked  # or force a specific model
 
 # 4. Predict for a date already present in features.parquet
 python -m mlb_ml.predict --date 2024-08-01
@@ -47,11 +52,14 @@ src/mlb_ml/
   config.py            paths + constants
   data.py              Retrosheet game-log ingestion (pybaseball)
   statcast.py          Statcast pitch-level pulls (cached per season)
-  features.py          rolling team form, Elo, rest, park (main orchestrator)
+  features.py          feature orchestrator: team form + Elo + all layers
   pitcher_features.py  rolling simple starting-pitcher form
   pitcher_adv.py       Statcast advanced metrics (xwOBA, K%, BB%, whiff%)
   bullpen.py           bullpen fatigue (last-1d/3d reliever pitch counts)
-  train.py             time-series CV + calibrated XGBoost
+  park_factors.py      lagged per-park runs/game factor
+  weather.py           user-supplied weather CSV merge
+  models.py            model zoo: xgb, lgbm, logistic, stacked ensemble
+  train.py             benchmark + calibrated fit of the selected model
   predict.py           daily win-probability CLI
   backtest.py          walk-forward backtest + optional ROI
 data/           raw + processed parquet (gitignored)
@@ -74,6 +82,7 @@ models/         saved model artifacts (gitignored)
 - [x] Walk-forward backtest with optional moneyline ROI
 - [x] Statcast advanced pitcher metrics (xwOBA against, K%, BB%, whiff%)
 - [x] Bullpen fatigue (last-1d / last-3d reliever pitch counts)
-- [ ] Park factors and weather
+- [x] Park factors (lagged one season) and user-supplied weather merge
+- [x] LightGBM benchmark + stacked ensemble
 - [ ] Lineup handedness vs. starter splits
-- [ ] LightGBM benchmark + stacked ensemble
+- [ ] Hyperparameter search (Optuna) on the top model

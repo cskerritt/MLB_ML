@@ -10,27 +10,34 @@ import logging
 from datetime import date
 
 import joblib
+import numpy as np
 import pandas as pd
+from sklearn.impute import SimpleImputer
 
 from .config import FEATURES_PARQUET, MODEL_PATH
 
 log = logging.getLogger(__name__)
 
+_NEEDS_IMPUTE = {"logit", "stacked"}
+
 
 def _load_model():
     bundle = joblib.load(MODEL_PATH)
-    return bundle["model"], bundle["feature_cols"]
+    return bundle["model"], bundle["feature_cols"], bundle.get("model_name", "xgb")
 
 
 def predict_for_date(target: date) -> pd.DataFrame:
-    model, feature_cols = _load_model()
+    model, feature_cols, model_name = _load_model()
     feats = pd.read_parquet(FEATURES_PARQUET)
     feats["date"] = pd.to_datetime(feats["date"]).dt.date
     games = feats[feats["date"] == target].copy()
     if games.empty:
         raise SystemExit(f"No games found in features.parquet for {target}.")
 
-    proba = model.predict_proba(games[feature_cols].values)[:, 1]
+    X = games[feature_cols].values
+    if model_name in _NEEDS_IMPUTE:
+        X = SimpleImputer(strategy="median").fit_transform(X)
+    proba = model.predict_proba(X)[:, 1]
     games["home_win_prob"] = proba
     games["pick"] = ["HOME" if p >= 0.5 else "AWAY" for p in proba]
     return games[["date", "away_team", "home_team", "home_win_prob", "pick"]]
