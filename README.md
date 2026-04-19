@@ -24,7 +24,11 @@ python -m mlb_ml.features --statcast-start 2022 --statcast-end 2024
 #     (schema: date,park_id,temp_f,wind_mph,wind_dir,precip_pct,is_dome)
 python -m mlb_ml.features --weather-csv data/raw/weather.csv
 
-# 3. Benchmark XGBoost vs LightGBM vs logistic vs stacked, save the best
+# 3a. Optional: Optuna hyperparameter search (writes models/best_params.json)
+python -m mlb_ml.tune --model lgbm --trials 40
+
+# 3b. Benchmark XGBoost vs LightGBM vs logistic vs stacked, save the best
+#     (tuned params are picked up automatically when present)
 python -m mlb_ml.train                  # auto-picks best by log loss
 python -m mlb_ml.train --model stacked  # or force a specific model
 
@@ -58,7 +62,9 @@ src/mlb_ml/
   bullpen.py           bullpen fatigue (last-1d/3d reliever pitch counts)
   park_factors.py      lagged per-park runs/game factor
   weather.py           user-supplied weather CSV merge
+  handedness.py        starter hand + rolling team vs-L / vs-R splits
   models.py            model zoo: xgb, lgbm, logistic, stacked ensemble
+  tune.py              Optuna hyperparameter search (walk-forward CV)
   train.py             benchmark + calibrated fit of the selected model
   predict.py           daily win-probability CLI
   backtest.py          walk-forward backtest + optional ROI
@@ -84,5 +90,7 @@ models/         saved model artifacts (gitignored)
 - [x] Bullpen fatigue (last-1d / last-3d reliever pitch counts)
 - [x] Park factors (lagged one season) and user-supplied weather merge
 - [x] LightGBM benchmark + stacked ensemble
-- [ ] Lineup handedness vs. starter splits
-- [ ] Hyperparameter search (Optuna) on the top model
+- [x] Starter handedness + rolling team vs-L / vs-R scoring splits
+- [x] Optuna hyperparameter search on the tree models
+- [ ] Injury/IL-list ingestion
+- [ ] Umpire strike-zone tendencies

@@ -33,6 +33,7 @@ from .park_factors import (
     merge_park_factors_into_games,
 )
 from .weather import WEATHER_FEATURE_COLS, load_weather_csv, merge_weather_into_games
+from .handedness import HANDEDNESS_FEATURE_COLS, merge_handedness_into_games
 
 log = logging.getLogger(__name__)
 
@@ -156,6 +157,8 @@ def build_features(
         bullpen = build_bullpen_features(statcast, starters)
         merged = merge_bullpen_into_games(merged, bullpen)
 
+        merged = merge_handedness_into_games(merged, statcast)
+
     if "park_id" in games.columns:
         pf = compute_park_factors(games)
         merged = merge_park_factors_into_games(merged, pf)
@@ -198,6 +201,7 @@ FEATURE_COLS = (
     + BULLPEN_FEATURE_COLS
     + PARK_FEATURE_COLS
     + WEATHER_FEATURE_COLS
+    + HANDEDNESS_FEATURE_COLS
 )
 
 

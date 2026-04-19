@@ -16,6 +16,7 @@ for _d in (RAW_DIR, PROCESSED_DIR, CACHE_DIR, MODELS_DIR):
 GAMES_PARQUET = PROCESSED_DIR / "games.parquet"
 FEATURES_PARQUET = PROCESSED_DIR / "features.parquet"
 MODEL_PATH = MODELS_DIR / "xgb_winprob.joblib"
+BEST_PARAMS_PATH = MODELS_DIR / "best_params.json"
 
 TARGET_COL = "home_win"
 RANDOM_STATE = 42

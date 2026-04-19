@@ -22,6 +22,8 @@ KEEP_COLS = [
     "game_pk",
     "pitcher",
     "player_name",
+    "p_throws",
+    "stand",
     "pitch_type",
     "events",
     "description",
