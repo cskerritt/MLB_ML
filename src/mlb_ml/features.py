@@ -16,6 +16,17 @@ from .pitcher_features import (
     build_pitcher_features,
     merge_into_games,
 )
+from .pitcher_adv import (
+    ADVANCED_PITCHER_FEATURE_COLS,
+    build_advanced_pitcher_features,
+    merge_advanced_into_games,
+)
+from .bullpen import (
+    BULLPEN_FEATURE_COLS,
+    build_bullpen_features,
+    infer_starters,
+    merge_bullpen_into_games,
+)
 
 log = logging.getLogger(__name__)
 
@@ -85,8 +96,16 @@ def _elo(games: pd.DataFrame, k: float = 4.0, hfa: float = 24.0) -> pd.DataFrame
     )
 
 
-def build_features(games: pd.DataFrame | None = None) -> pd.DataFrame:
-    """Construct the modeling table from a games dataframe."""
+def build_features(
+    games: pd.DataFrame | None = None,
+    statcast: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Construct the modeling table from a games dataframe.
+
+    If ``statcast`` is provided, advanced pitcher metrics (xwOBA, K%, BB%,
+    whiff%) and bullpen-fatigue features are attached on top of the base
+    team-form + Elo + simple-pitcher layers.
+    """
     if games is None:
         games = pd.read_parquet(GAMES_PARQUET)
     games = games.sort_values("date").reset_index(drop=True)
@@ -119,6 +138,14 @@ def build_features(games: pd.DataFrame | None = None) -> pd.DataFrame:
         pitcher_feats = build_pitcher_features(games)
         merged = merge_into_games(merged, pitcher_feats)
 
+    if statcast is not None and not statcast.empty:
+        adv = build_advanced_pitcher_features(statcast)
+        merged = merge_advanced_into_games(merged, adv)
+
+        starters = infer_starters(statcast)
+        bullpen = build_bullpen_features(statcast, starters)
+        merged = merge_bullpen_into_games(merged, bullpen)
+
     for w in ROLL_WINDOWS:
         merged[f"win_pct_diff_{w}"] = merged[f"home_win_pct_{w}"] - merged[f"away_win_pct_{w}"]
         merged[f"run_diff_diff_{w}"] = merged[f"home_run_diff_{w}"] - merged[f"away_run_diff_{w}"]
@@ -146,9 +173,27 @@ TEAM_FEATURE_COLS = [
     *[f"away_run_diff_{w}" for w in ROLL_WINDOWS],
 ]
 
-FEATURE_COLS = TEAM_FEATURE_COLS + PITCHER_FEATURE_COLS
+FEATURE_COLS = (
+    TEAM_FEATURE_COLS
+    + PITCHER_FEATURE_COLS
+    + ADVANCED_PITCHER_FEATURE_COLS
+    + BULLPEN_FEATURE_COLS
+)
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    build_features()
+    import argparse
+
+    p = argparse.ArgumentParser()
+    p.add_argument("--statcast-start", type=int, default=None,
+                   help="If set, pull Statcast for this season range and attach advanced features")
+    p.add_argument("--statcast-end", type=int, default=None)
+    args = p.parse_args()
+
+    sc = None
+    if args.statcast_start is not None and args.statcast_end is not None:
+        from .statcast import load_statcast
+
+        sc = load_statcast(range(args.statcast_start, args.statcast_end + 1))
+    build_features(statcast=sc)

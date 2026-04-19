@@ -13,8 +13,12 @@ pip install -r requirements.txt
 # 1. Pull seasons of game logs (cached per-season as parquet)
 python -m mlb_ml.data --start 2018 --end 2024
 
-# 2. Build the modeling table
+# 2a. Build the modeling table (team form + Elo + simple pitcher)
 python -m mlb_ml.features
+
+# 2b. Optional: enrich with Statcast advanced pitcher metrics + bullpen fatigue
+#     (first run downloads ~700k pitches per season; cached to data/raw/)
+python -m mlb_ml.features --statcast-start 2022 --statcast-end 2024
 
 # 3. Train + walk-forward cross-validate
 python -m mlb_ml.train
@@ -42,8 +46,11 @@ export PYTHONPATH=src
 src/mlb_ml/
   config.py            paths + constants
   data.py              Retrosheet game-log ingestion (pybaseball)
-  features.py          rolling team form, Elo, rest, park
-  pitcher_features.py  rolling starting-pitcher form
+  statcast.py          Statcast pitch-level pulls (cached per season)
+  features.py          rolling team form, Elo, rest, park (main orchestrator)
+  pitcher_features.py  rolling simple starting-pitcher form
+  pitcher_adv.py       Statcast advanced metrics (xwOBA, K%, BB%, whiff%)
+  bullpen.py           bullpen fatigue (last-1d/3d reliever pitch counts)
   train.py             time-series CV + calibrated XGBoost
   predict.py           daily win-probability CLI
   backtest.py          walk-forward backtest + optional ROI
@@ -65,8 +72,8 @@ models/         saved model artifacts (gitignored)
 
 - [x] Starting-pitcher rolling features (runs allowed, rest, experience)
 - [x] Walk-forward backtest with optional moneyline ROI
-- [ ] Statcast upgrade: pitcher FIP, K%, BB%, xwOBA against
-- [ ] Bullpen fatigue (last-3-day pitch counts)
+- [x] Statcast advanced pitcher metrics (xwOBA against, K%, BB%, whiff%)
+- [x] Bullpen fatigue (last-1d / last-3d reliever pitch counts)
 - [ ] Park factors and weather
 - [ ] Lineup handedness vs. starter splits
 - [ ] LightGBM benchmark + stacked ensemble

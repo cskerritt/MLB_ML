@@ -26,7 +26,7 @@ from sklearn.metrics import accuracy_score, brier_score_loss, log_loss
 
 from .config import FEATURES_PARQUET, TARGET_COL
 from .features import FEATURE_COLS
-from .train import _base_model
+from .train import _available_features, _base_model
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +46,7 @@ def _american_to_decimal(odds: float) -> float:
 def walk_forward(df: pd.DataFrame, train_seasons: int = 3) -> pd.DataFrame:
     """Refit per season using the prior ``train_seasons`` years."""
     df = df.sort_values("date").reset_index(drop=True)
+    cols = _available_features(df)
     seasons = sorted(df["season"].unique())
     out = []
     for s in seasons[train_seasons:]:
@@ -54,8 +55,8 @@ def walk_forward(df: pd.DataFrame, train_seasons: int = 3) -> pd.DataFrame:
         if not train_mask.any() or not test_mask.any():
             continue
         model = _base_model()
-        model.fit(df.loc[train_mask, FEATURE_COLS].values, df.loc[train_mask, TARGET_COL].values)
-        proba = model.predict_proba(df.loc[test_mask, FEATURE_COLS].values)[:, 1]
+        model.fit(df.loc[train_mask, cols].values, df.loc[train_mask, TARGET_COL].values)
+        proba = model.predict_proba(df.loc[test_mask, cols].values)[:, 1]
         block = df.loc[test_mask, ["date", "season", "home_team", "away_team", TARGET_COL]].copy()
         block["model_prob"] = proba
         out.append(block)

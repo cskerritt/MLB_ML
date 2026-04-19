@@ -25,10 +25,20 @@ def _load() -> pd.DataFrame:
     df = pd.read_parquet(FEATURES_PARQUET).sort_values("date").reset_index(drop=True)
     df = df.dropna(subset=[TARGET_COL])
     # Drop rows where the core team-form features are missing (early-season warmup).
-    # Pitcher columns are allowed to be NaN; XGBoost handles missing values natively.
+    # Pitcher and bullpen columns are allowed to be NaN; XGBoost handles missing values.
     must_have = ["elo_diff", "home_win_pct_30", "away_win_pct_30"]
     df = df.dropna(subset=must_have)
     return df
+
+
+def _available_features(df: pd.DataFrame) -> list[str]:
+    """Use only FEATURE_COLS that actually exist in the parquet.
+
+    Advanced-pitcher and bullpen columns only show up when Statcast was passed
+    into ``build_features``. Silently dropping them here lets the same training
+    script work on both base and Statcast-enriched tables.
+    """
+    return [c for c in FEATURE_COLS if c in df.columns]
 
 
 def _base_model() -> XGBClassifier:
@@ -50,7 +60,8 @@ def _base_model() -> XGBClassifier:
 
 def cross_validate(df: pd.DataFrame, n_splits: int = 5) -> pd.DataFrame:
     """Walk-forward CV. Returns per-fold metrics."""
-    X = df[FEATURE_COLS].values
+    cols = _available_features(df)
+    X = df[cols].values
     y = df[TARGET_COL].values
     splitter = TimeSeriesSplit(n_splits=n_splits)
     rows = []
@@ -74,7 +85,8 @@ def cross_validate(df: pd.DataFrame, n_splits: int = 5) -> pd.DataFrame:
 
 def fit_final(df: pd.DataFrame) -> CalibratedClassifierCV:
     """Fit a probability-calibrated model on all available data."""
-    X = df[FEATURE_COLS].values
+    cols = _available_features(df)
+    X = df[cols].values
     y = df[TARGET_COL].values
     base = _base_model()
     cal = CalibratedClassifierCV(base, method="isotonic", cv=3)
@@ -93,8 +105,9 @@ def main() -> None:
              cv["accuracy"].mean(), cv["log_loss"].mean(), cv["brier"].mean(), cv["auc"].mean())
 
     model = fit_final(df)
-    joblib.dump({"model": model, "feature_cols": FEATURE_COLS}, MODEL_PATH)
-    log.info("Saved model to %s", MODEL_PATH)
+    cols = _available_features(df)
+    joblib.dump({"model": model, "feature_cols": cols}, MODEL_PATH)
+    log.info("Saved model (%d features) to %s", len(cols), MODEL_PATH)
 
 
 if __name__ == "__main__":
