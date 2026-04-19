@@ -49,6 +49,11 @@ python -m mlb_ml.live --date 2024-08-01
 python -m mlb_ml.daily                   # fresh run for today
 python -m mlb_ml.daily --refresh         # also re-pull Retrosheet logs
 
+# 4c. Grade yesterday's picks against final scores and append to the
+#     running daily_picks/track_record.csv.
+python -m mlb_ml.score                   # defaults to yesterday
+python -m mlb_ml.score --date 2024-08-01
+
 # 5. Walk-forward backtest (refits per season, compares vs baselines)
 python -m mlb_ml.backtest --train-seasons 3
 
@@ -65,10 +70,14 @@ export PYTHONPATH=src
 
 ## Automation
 
-`.github/workflows/daily_picks.yml` runs `mlb_ml.daily` every day at
-15:00 UTC (11:00 ET) and commits fresh picks to `daily_picks/`. It also
-accepts a manual run via **Actions → Daily MLB Picks → Run workflow**, with
-optional inputs:
+`.github/workflows/daily_picks.yml` runs every day at 15:00 UTC (11:00 ET).
+Each run first grades yesterday's picks against final scores
+(`mlb_ml.score`) and then generates today's picks (`mlb_ml.daily`), committing
+both the scored CSV, the updated `track_record.csv`, and today's picks to
+`daily_picks/`.
+
+Manual run via **Actions → Daily MLB Picks → Run workflow**, with optional
+inputs:
 
 - `date` (YYYY-MM-DD) — target slate; defaults to today.
 - `refresh` (`true`/`false`) — force re-pull of Retrosheet game logs.
@@ -76,7 +85,9 @@ optional inputs:
 The workflow caches `data/raw`, `data/processed`, and `models/` across runs so
 only the delta (latest season logs, new features, fresh live predictions) is
 recomputed each day. First run on a cold cache takes ~5 minutes; subsequent
-runs are typically under a minute.
+runs are typically under a minute. The scoring step uses
+`continue-on-error: true` so the very first run (when no prior picks exist)
+doesn't fail the job.
 
 ## Project layout
 
@@ -100,6 +111,7 @@ src/mlb_ml/
   predict.py           daily win-probability CLI (from features.parquet)
   live.py              today's schedule from MLB Stats API + predictions
   daily.py             end-to-end orchestrator for scheduled refreshes
+  score.py             grades prior-day picks, maintains track_record.csv
   backtest.py          walk-forward backtest + optional ROI
 data/           raw + processed parquet (gitignored)
 models/         saved model artifacts (gitignored)
