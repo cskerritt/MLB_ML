@@ -28,6 +28,8 @@ GAME_LOG_COLS = [
     "DayNight",
     "HomeManagerName",
     "VisitorManagerName",
+    "HomePlateUmpireID",
+    "HomePlateUmpireName",
 ]
 
 
@@ -88,6 +90,8 @@ def _normalize(df: pd.DataFrame) -> pd.DataFrame:
             "VisitorStartingPitcherName": "away_sp_name",
             "ParkID": "park_id",
             "DayNight": "day_night",
+            "HomePlateUmpireID": "ump_id",
+            "HomePlateUmpireName": "ump_name",
         }
     )
     out["date"] = pd.to_datetime(out["date"], format="%Y%m%d", errors="coerce")

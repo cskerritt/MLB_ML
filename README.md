@@ -24,6 +24,10 @@ python -m mlb_ml.features --statcast-start 2022 --statcast-end 2024
 #     (schema: date,park_id,temp_f,wind_mph,wind_dir,precip_pct,is_dome)
 python -m mlb_ml.features --weather-csv data/raw/weather.csv
 
+# 2d. Optional: merge injury/IL snapshots from your own CSV
+#     (schema: date,team,il_count[,il_wrc_lost,il_war_lost])
+python -m mlb_ml.features --injuries-csv data/raw/injuries.csv
+
 # 3a. Optional: Optuna hyperparameter search (writes models/best_params.json)
 python -m mlb_ml.tune --model lgbm --trials 40
 
@@ -34,6 +38,11 @@ python -m mlb_ml.train --model stacked  # or force a specific model
 
 # 4. Predict for a date already present in features.parquet
 python -m mlb_ml.predict --date 2024-08-01
+
+# 4a. Live predictions: pulls today's schedule + probable pitchers from the
+#     public MLB Stats API and runs the trained model against them.
+python -m mlb_ml.live                    # defaults to today
+python -m mlb_ml.live --date 2024-08-01
 
 # 5. Walk-forward backtest (refits per season, compares vs baselines)
 python -m mlb_ml.backtest --train-seasons 3
@@ -63,10 +72,13 @@ src/mlb_ml/
   park_factors.py      lagged per-park runs/game factor
   weather.py           user-supplied weather CSV merge
   handedness.py        starter hand + rolling team vs-L / vs-R splits
+  injuries.py          user-supplied IL snapshot CSV merge
+  umpire.py            lagged per-umpire run-environment factor
   models.py            model zoo: xgb, lgbm, logistic, stacked ensemble
   tune.py              Optuna hyperparameter search (walk-forward CV)
   train.py             benchmark + calibrated fit of the selected model
-  predict.py           daily win-probability CLI
+  predict.py           daily win-probability CLI (from features.parquet)
+  live.py              today's schedule from MLB Stats API + predictions
   backtest.py          walk-forward backtest + optional ROI
 data/           raw + processed parquet (gitignored)
 models/         saved model artifacts (gitignored)
@@ -92,5 +104,7 @@ models/         saved model artifacts (gitignored)
 - [x] LightGBM benchmark + stacked ensemble
 - [x] Starter handedness + rolling team vs-L / vs-R scoring splits
 - [x] Optuna hyperparameter search on the tree models
-- [ ] Injury/IL-list ingestion
-- [ ] Umpire strike-zone tendencies
+- [x] Injury/IL-list ingestion (CSV merge)
+- [x] Umpire run-environment factor (lagged)
+- [x] Live daily predictions via public MLB Stats API
+- [ ] Scheduled auto-refresh (GitHub Action) for daily picks

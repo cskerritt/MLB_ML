@@ -34,6 +34,16 @@ from .park_factors import (
 )
 from .weather import WEATHER_FEATURE_COLS, load_weather_csv, merge_weather_into_games
 from .handedness import HANDEDNESS_FEATURE_COLS, merge_handedness_into_games
+from .injuries import (
+    INJURY_FEATURE_COLS,
+    load_injuries_csv,
+    merge_injuries_into_games,
+)
+from .umpire import (
+    UMPIRE_FEATURE_COLS,
+    compute_umpire_factors,
+    merge_umpire_factors_into_games,
+)
 
 log = logging.getLogger(__name__)
 
@@ -107,15 +117,16 @@ def build_features(
     games: pd.DataFrame | None = None,
     statcast: pd.DataFrame | None = None,
     weather_csv: str | None = None,
+    injuries_csv: str | None = None,
 ) -> pd.DataFrame:
     """Construct the modeling table from a games dataframe.
 
-    If ``statcast`` is provided, advanced pitcher metrics (xwOBA, K%, BB%,
-    whiff%) and bullpen-fatigue features are attached on top of the base
-    team-form + Elo + simple-pitcher layers. Park factors (lagged one season)
-    are always attached when ``park_id`` is available. If ``weather_csv``
-    points to a file matching the schema in ``weather.py``, per-game weather
-    is merged in as well.
+    Optional enrichments:
+      - ``statcast``: advanced pitcher metrics, bullpen fatigue, handedness.
+      - ``weather_csv``: per-game weather (see ``weather.py`` schema).
+      - ``injuries_csv``: per-team IL load snapshot (see ``injuries.py``).
+
+    Park and umpire factors are always attached when their id columns exist.
     """
     if games is None:
         games = pd.read_parquet(GAMES_PARQUET)
@@ -163,9 +174,17 @@ def build_features(
         pf = compute_park_factors(games)
         merged = merge_park_factors_into_games(merged, pf)
 
+    if "ump_id" in games.columns:
+        uf = compute_umpire_factors(games)
+        merged = merge_umpire_factors_into_games(merged, uf)
+
     if weather_csv is not None:
         weather = load_weather_csv(weather_csv)
         merged = merge_weather_into_games(merged, weather)
+
+    if injuries_csv is not None:
+        il = load_injuries_csv(injuries_csv)
+        merged = merge_injuries_into_games(merged, il)
 
     for w in ROLL_WINDOWS:
         merged[f"win_pct_diff_{w}"] = merged[f"home_win_pct_{w}"] - merged[f"away_win_pct_{w}"]
@@ -200,8 +219,10 @@ FEATURE_COLS = (
     + ADVANCED_PITCHER_FEATURE_COLS
     + BULLPEN_FEATURE_COLS
     + PARK_FEATURE_COLS
+    + UMPIRE_FEATURE_COLS
     + WEATHER_FEATURE_COLS
     + HANDEDNESS_FEATURE_COLS
+    + INJURY_FEATURE_COLS
 )
 
 
@@ -215,6 +236,8 @@ if __name__ == "__main__":
     p.add_argument("--statcast-end", type=int, default=None)
     p.add_argument("--weather-csv", type=str, default=None,
                    help="Optional CSV: date,park_id,temp_f,wind_mph,wind_dir,precip_pct,is_dome")
+    p.add_argument("--injuries-csv", type=str, default=None,
+                   help="Optional CSV: date,team,il_count[,il_wrc_lost,il_war_lost]")
     args = p.parse_args()
 
     sc = None
@@ -222,4 +245,5 @@ if __name__ == "__main__":
         from .statcast import load_statcast
 
         sc = load_statcast(range(args.statcast_start, args.statcast_end + 1))
-    build_features(statcast=sc, weather_csv=args.weather_csv)
+    build_features(statcast=sc, weather_csv=args.weather_csv,
+                   injuries_csv=args.injuries_csv)
