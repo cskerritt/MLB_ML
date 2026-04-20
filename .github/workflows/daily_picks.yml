@@ -1,0 +1,94 @@
+name: Daily MLB Picks
+
+on:
+  schedule:
+    # 15:00 UTC = 11:00 ET. Most MLB slates lock after 13:00 ET, so running
+    # here gives a current probable-pitcher snapshot before first pitch.
+    - cron: "0 15 * * *"
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Target date (YYYY-MM-DD). Leave blank for today."
+        required: false
+        default: ""
+      refresh:
+        description: "Force re-pull of Retrosheet game logs"
+        required: false
+        default: "false"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-picks
+  cancel-in-progress: false
+
+jobs:
+  picks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PYTHONPATH: src
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Restore cached Retrosheet parquet
+        id: cache-data
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/raw
+            data/processed
+            models
+          key: mlb-data-${{ github.run_id }}
+          restore-keys: |
+            mlb-data-
+
+      - name: Resolve target dates
+        id: target
+        run: |
+          if [ -n "${{ github.event.inputs.date }}" ]; then
+            TODAY="${{ github.event.inputs.date }}"
+          else
+            TODAY="$(date -u +%Y-%m-%d)"
+          fi
+          YESTERDAY="$(date -u -d "$TODAY - 1 day" +%Y-%m-%d)"
+          echo "today=$TODAY" >> "$GITHUB_OUTPUT"
+          echo "yesterday=$YESTERDAY" >> "$GITHUB_OUTPUT"
+
+      - name: Score yesterday's picks
+        continue-on-error: true  # no picks file yet on the very first run
+        run: |
+          python -m mlb_ml.score --date "${{ steps.target.outputs.yesterday }}"
+
+      - name: Run daily pipeline
+        run: |
+          REFRESH_FLAG=""
+          if [ "${{ github.event.inputs.refresh }}" = "true" ]; then
+            REFRESH_FLAG="--refresh"
+          fi
+          python -m mlb_ml.daily --date "${{ steps.target.outputs.today }}" $REFRESH_FLAG
+
+      - name: Commit picks if changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add daily_picks/
+          if git diff --cached --quiet; then
+            echo "No pick changes to commit."
+            exit 0
+          fi
+          git commit -m "chore(daily-picks): refresh for ${{ steps.target.outputs.today }}"
+          git push
